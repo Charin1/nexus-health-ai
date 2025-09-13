@@ -1,0 +1,56 @@
+# --- Python ---
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# --- Virtual Environments ---
+# Standard virtual environment folders
+.venv
+venv/
+ENV/
+env/
+
+# --- Dependency Management ---
+# uv cache and other artifacts (uv.lock should be committed)
+.uv-cache/
+
+# --- IDE / Editor Configuration ---
+# Visual Studio Code
+.vscode/
+# JetBrains (PyCharm, etc.)
+.idea/
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+# macOS
+.DS_Store
+
+# --- Sensitive Information ---
+# Environment variables file - DO NOT COMMIT THIS
+.env
+
+# --- Generated Data & Caches ---
+# Embedchain/RAG tool database cache
+db/
+.embedchain/
+
+# Testing caches and reports
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# --- Log Files ---
+*.log
+logs/
+
+# --- Distribution / Packaging ---
+# Build artifacts
+build/
+dist/
+*.egg-info/
