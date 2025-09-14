@@ -2,65 +2,52 @@ from collections.abc import AsyncGenerator
 from acp_sdk.models import Message, MessagePart
 from acp_sdk.server import RunYield, RunYieldResume, Server
 from crewai import Crew, Task, Agent
-from crewai_tools import RagTool
 from langchain_ollama import OllamaLLM
+
+# Import the function that creates our list of tools
+from tools.policy_tools import load_policy_rag_tools
 
 server = Server()
 
-# This part is correct, as langchain-ollama also connects directly.
+# Configure the local LLM for the CrewAI agent
 local_llm = OllamaLLM(model="ollama/llama3.1:8b-instruct-q4_K_M")
 
-# --- CORRECTED SECTION ---
-# The RAG tool's LLM config must also use the real Ollama model name.
-rag_config = {
-    "llm": {
-        "provider": "ollama",
-        "config": {
-            "model": "llama3.1:8b-instruct-q4_K_M",  # <-- CORRECTED: Use the real Ollama model name
-            "base_url": "http://localhost:11434"
-        }
-    },
-    "embedding_model": {
-        "provider": "huggingface",
-        "config": {
-            "model": "BAAI/bge-m3"
-        }
-    }
-}
-# --- END CORRECTED SECTION ---
-
-rag_tool = RagTool(
-    config=rag_config,
-    chunk_size=1200,
-    chunk_overlap=200,
-)
-rag_tool.add("data/gold-hospital-and-premium-extras.pdf", data_type="pdf_file")
-
+# --- Load all RAG tools at startup ---
+all_policy_tools = load_policy_rag_tools()
 
 @server.agent()
 async def policy_agent(input: list[Message]) -> AsyncGenerator[RunYield, RunYieldResume]:
     """
-    This is an agent for questions around policy coverage. It uses a RAG pattern
-    to find answers based on policy documentation. Use it to help answer questions
-    on coverage and waiting periods.
+    A single-agent crew that selects the correct policy document tool from its
+    toolbelt and uses it to answer the user's query.
     """
-    insurance_agent = Agent(
-        role="Senior Insurance Coverage Assistant",
-        goal="Determine whether something is covered or not based on the provided policy documents",
-        backstory="You are an expert insurance agent designed to assist with coverage queries. You ONLY use the information available in the provided documents to answer questions.",
-        verbose=True,
-        allow_delegation=False,
+    user_query = input[0].parts[0].content
+
+    # --- SIMPLIFIED AGENT DEFINITION ---
+    # We create one agent and give it all the tools it might need.
+    specialist_agent = Agent(
+        role="Insurance Policy Specialist",
+        goal="Analyze the user's query to select the single most appropriate policy document tool from your toolbelt. Then, use that specific tool to answer the user's question accurately based on the document's content.",
+        backstory="You are a meticulous insurance expert with access to multiple, specific policy document tools. Your primary skill is choosing the correct document tool before answering a question.",
         llm=local_llm,
-        tools=[rag_tool],
-        max_retry_limit=3
+        tools=all_policy_tools,  # <-- Give the agent the list of all RAG tools
+        verbose=True
     )
 
-    task1 = Task(
-         description=input[0].parts[0].content,
-         expected_output="A comprehensive response to the user's question, citing information directly from the policy documents.",
-         agent=insurance_agent
+    # --- SIMPLIFIED TASK DEFINITION ---
+    # One task for the one agent.
+    querying_task = Task(
+        description=f"Answer the user's query: '{user_query}'. You must first determine which policy document is relevant by looking at your available tools, and then use the single most appropriate tool to find the answer.",
+        expected_output="A detailed and accurate answer to the user's question, based on the information found in the correct policy document.",
+        agent=specialist_agent
     )
-    crew = Crew(agents=[insurance_agent], tasks=[task1], verbose=True)
+
+    # --- SIMPLIFIED CREW ---
+    crew = Crew(
+        agents=[specialist_agent],
+        tasks=[querying_task],
+        verbose=True
+    )
 
     task_output = await crew.kickoff_async()
     yield Message(parts=[MessagePart(content=str(task_output))])
