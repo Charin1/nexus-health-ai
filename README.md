@@ -13,7 +13,7 @@ This system leverages multiple specialized AI agents to handle a variety of task
 
 *   **Multi-Agent Specialization:** Utilizes different agent frameworks (`smolagents` and `crewai`) to assign specialized agents to specific tasks for optimal performance.
 *   **Local-First AI:** Ensures data privacy and eliminates API costs by running entirely on local models using **Ollama**.
-*   **Advanced RAG Capabilities:** The Policy Agent uses Retrieval-Augmented Generation to provide accurate answers from specific documents, such as insurance policies.
+*   **Dynamic RAG via Multi-Tool Selection:** The Policy Agent can intelligently select the correct policy document from a library of pre-indexed files to answer user queries, making the system dynamic and scalable.
 *   **Modular and Scalable:** Built with a clear separation of concerns, using modern protocols like ACP and MCP for communication between agents and tools.
 *   **Tool-Enabled Agents:** Agents can use external tools, such as a real-time web search or a custom doctor database, to enhance their capabilities.
 
@@ -22,11 +22,11 @@ This system leverages multiple specialized AI agents to handle a variety of task
 The backend is composed of several independent services that work together:
 
 1.  **Local Models Server (Ollama):** This is the core service that runs the local LLM (`llama3:8b`) and the embedding model (`BAAI/bge-m3`). It must be running for any of the AI agents to function.
-2.  **ACP Agent Servers (The Agents):** These are the main entry points for user interaction, running on the Agent-Communication-Protocol (ACP) protocol.
-    *   **Smol Agent Server (Port 8000):** Hosts the generalist agents (`health_agent`, `doctor_agent`). It connects directly to the Ollama server.
-    *   **CrewAI Agent Server (Port 8001):** Hosts the specialist `policy_agent` for document analysis. It also connects directly to the Ollama server.
+2.  **ACP Agent Servers (The Agents):** These are the main entry points for user interaction, running on the Agent-Communication-Protocol (ACP) protocol. Both servers connect **directly** to the Ollama instance.
+    *   **Smol Agent Server (Port 8000):** Hosts the generalist agents (`health_agent`, `doctor_agent`).
+    *   **CrewAI Agent Server (Port 8001):** Hosts the specialist `policy_agent`. This agent is given a unique RAG tool for each indexed document and intelligently selects the correct one based on the user's query.
 3.  **MCP Tool Server (The Tool):**
-    *   **Doctor Server:** This is a lightweight microservice running on the Model-Context-Protocol (MCP). It exposes a `list_doctors` function that the `doctor_agent` can call to retrieve data. It is started automatically by the Smol Agent Server.
+    *   **Doctor Server:** This is a lightweight microservice running on the Model-Context-Protocol (MCP). It exposes a `list_doctors` function that the `doctor_agent` can call. It is started automatically as a subprocess by the Smol Agent Server.
 
 ## Tech Stack
 
@@ -36,17 +36,17 @@ This project integrates a modern stack of AI and backend technologies:
 | :--- | :--- | :--- |
 | **Language & Frameworks** | Python 3.11+ | Core programming language. |
 | | FastAPI | Underpins the `acp-sdk` server for high-performance API endpoints. |
-| **AI Agent Frameworks** | **CrewAI** | Used for the specialized `policy_agent` to orchestrate tasks requiring a thought-action reasoning loop. |
-| | **Smol Agents** | Used for the more straightforward `health_agent` and `doctor_agent` that rely on direct tool execution. |
+| **AI Agent Frameworks** | **CrewAI** | Used for the `policy_agent` to orchestrate tool selection and RAG. |
+| | **Smol Agents** | Used for the `health_agent` and `doctor_agent` for code generation and tool calling. |
 | **Communication Protocols**| **ACP (Agent-Communication-Protocol)** | The primary, modern protocol for exposing agents as services. |
 | | **MCP (Model-Context-Protocol)**| Used for inter-service communication, allowing agents to discover and use external tools like the doctor database. |
 | **AI Models & Infra** | **Ollama** | The engine for serving and running local LLMs and embedding models. |
 | | **`llama3:8b`** | The specific local Large Language Model used for reasoning and generation. |
 | | **`BAAI/bge-m3`** | The high-performance embedding model used by the RAG tool for document analysis. |
-| **Core Libraries** | **`langchain-ollama`** | The dedicated, modern library for connecting LangChain-based frameworks (like CrewAI) to Ollama. |
-| | **`litellm`** | Used internally by `smolagents` to provide a unified interface for connecting to hundreds of LLMs, including Ollama. |
+| **Core Libraries** | **`langchain-ollama`** | The dedicated library for connecting LangChain-based frameworks (like CrewAI) to Ollama. |
+| | **`litellm`** | Used internally by `smolagents` to provide a unified client interface for connecting to Ollama. |
 | | **`uvicorn`** | A lightning-fast ASGI server used to run the agent applications. |
-| **Dependency Management**| **`uv`** | An extremely fast Python package installer and resolver, used for managing all project dependencies. |
+| **Dependency Management**| **`uv`** | An extremely fast Python package installer and resolver. |
 
 ## Further Learning & Resources
 
@@ -68,7 +68,8 @@ Follow these steps to get the backend up and running.
 
 ```bash
 git clone <your-repository-url>
-cd nexus-health-ai/backend```
+cd nexus-health-ai/backend
+```
 
 ### Step 2: Set Up the Environment
 
@@ -99,6 +100,16 @@ ollama pull llama3:8b
 # Pull the BGE-M3 embedding model
 ollama pull bge-m3
 ```
+
+### Step 4: Index Your Policy Documents
+
+Before running the servers, you must pre-process your policy documents into a searchable format. Place all your PDF policy files into the `backend/data/policies/` directory. Then, run the indexing script from the `backend` directory:
+
+```bash
+# Make sure your virtual environment is activated
+python scripts/index_policies.py
+```
+This will create a `db` folder containing the vector stores for each document and a `manifest.json` file. You only need to run this script once, or whenever you add, remove, or update a policy document.
 
 ## Running the Application
 
@@ -142,7 +153,7 @@ Asks to find doctors, which will trigger the MCP tool.
 
 #### 3. Test the Policy Agent (Port 8001)
 
-Asks a specific question about the PDF document.
+Asks a specific question that requires the agent to first identify the correct document and then find the answer within it.
 
 ## Status
 This project is still in its early stages. Expect breaking changes.
